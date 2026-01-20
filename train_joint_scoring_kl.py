@@ -3,8 +3,8 @@ Joint Training: Subset Scorer + Token-Set KL Classifier
 
 python train_joint_scoring_kl.py \
     --images-tr "/home/yaxi/nnUNet/nnUNet_raw/Dataset360_oaizib/imagesTr" \
-    --radiomics-train-csv "/home/yaxi/OA_KLG_Retrieval/output_train/radiomics_results_wide.csv" \
-    --klgrade-train-csv "/home/yaxi/OA_KLG_Retrieval/subInfo_train.xlsx" \
+    --radiomics-train-csv "/home/yaxi/YaxiiC-OA_KLG_Retrieval/output_train/radiomics_results_wide.csv" \
+    --klgrade-train-csv "/home/yaxi/YaxiiC-OA_KLG_Retrieval/subInfo_train.xlsx" \
     --outdir "training_logs_joint_scoring_kl" \
     --k 15 \
     --n-subsets 32 \
@@ -263,6 +263,16 @@ def main():
             f"Val Acc: {val_metrics['accuracy']:.4f} | Val F1: {val_metrics['macro_f1']:.4f} | "
             f"Val QWK: {val_metrics['qwk']:.4f} | Time: {epoch_time:.1f}s"
         )
+        if "probe_reward_mean" in train_metrics:
+            logger.info(
+                "Probe Reward | "
+                f"mean: {train_metrics['probe_reward_mean']:.4f} | "
+                f"std: {train_metrics['probe_reward_std']:.4f} | "
+                f"min: {train_metrics['probe_reward_min']:.4f} | "
+                f"max: {train_metrics['probe_reward_max']:.4f} | "
+                f"score_mean: {train_metrics['scorer_score_mean']:.4f} | "
+                f"score_std: {train_metrics['scorer_score_std']:.4f}"
+            )
 
         history_row = {
             "epoch": epoch,
@@ -272,6 +282,12 @@ def main():
             "train_qwk": train_metrics["qwk"],
             "train_cls_loss": train_metrics.get("cls_loss", None),
             "train_rank_loss": train_metrics.get("rank_loss", None),
+            "probe_reward_mean": train_metrics.get("probe_reward_mean", None),
+            "probe_reward_std": train_metrics.get("probe_reward_std", None),
+            "probe_reward_min": train_metrics.get("probe_reward_min", None),
+            "probe_reward_max": train_metrics.get("probe_reward_max", None),
+            "scorer_score_mean": train_metrics.get("scorer_score_mean", None),
+            "scorer_score_std": train_metrics.get("scorer_score_std", None),
             "val_loss": val_loss,
             "val_acc": val_metrics["accuracy"],
             "val_macro_f1": val_metrics["macro_f1"],
