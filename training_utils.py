@@ -455,6 +455,8 @@ def train_epoch_subset(
     total_rank_loss = 0.0
     all_preds = []
     all_labels = []
+    all_rewards = []
+    all_scores = []
 
     num_features = len(next(iter(radiomics_dict.values())))
     for batch in dataloader:
@@ -525,6 +527,8 @@ def train_epoch_subset(
             rewards_tensor = torch.tensor(rewards, dtype=torch.float32, device=device)
             scores_tensor = torch.cat(scores, dim=0)
             rank_loss = F.mse_loss(scores_tensor, rewards_tensor)
+            all_rewards.extend(rewards)
+            all_scores.extend(scores_tensor.detach().cpu().numpy().tolist())
 
             # Classifier training using TopM subsets by scorer
             with torch.no_grad():
@@ -571,6 +575,15 @@ def train_epoch_subset(
         total_rank_loss += batch_rank
 
     metrics = compute_metrics(np.array(all_labels), np.array(all_preds), y_proba=None)
+    if all_rewards:
+        rewards_arr = np.array(all_rewards, dtype=np.float32)
+        scores_arr = np.array(all_scores, dtype=np.float32)
+        metrics["probe_reward_mean"] = float(np.mean(rewards_arr))
+        metrics["probe_reward_std"] = float(np.std(rewards_arr))
+        metrics["probe_reward_min"] = float(np.min(rewards_arr))
+        metrics["probe_reward_max"] = float(np.max(rewards_arr))
+        metrics["scorer_score_mean"] = float(np.mean(scores_arr))
+        metrics["scorer_score_std"] = float(np.std(scores_arr))
     avg_loss = total_loss / len(dataloader)
     avg_cls = total_cls_loss / len(dataloader)
     avg_rank = total_rank_loss / len(dataloader)
