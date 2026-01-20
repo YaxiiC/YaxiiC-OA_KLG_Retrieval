@@ -279,7 +279,7 @@ def load_radiomics_wide_format(
     if not base_feature_names:
         raise ValueError("No numeric feature columns found in wide-format CSV.")
 
-    logger.info(f"Found {len(feature_names)} feature columns.")
+    logger.info(f"Found {len(base_feature_names)} base feature columns.")
 
     case_radiomics = {}
     missing_stats = {
@@ -494,4 +494,5 @@ class KLGradeDataset(Dataset):
             "radiomics": radiomics,
             "label": label
         }
+
 
