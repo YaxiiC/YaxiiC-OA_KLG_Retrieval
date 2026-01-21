@@ -5,20 +5,20 @@ python train_joint_scoring_kl.py \
     --images-tr "/home/yaxi/nnUNet/nnUNet_raw/Dataset360_oaizib/imagesTr" \
     --radiomics-train-csv "/home/yaxi/YaxiiC-OA_KLG_Retrieval/output_train/radiomics_results_wide.csv" \
     --klgrade-train-csv "/home/yaxi/YaxiiC-OA_KLG_Retrieval/subInfo_train.xlsx" \
-    --outdir "training_logs_joint_scoring_kl" \
-    --k 15 \
-    --n-subsets 32 \
+    --outdir "training_logs_joint_scoring_k30" \
+    --k 30 \
+    --n-subsets 50 \
     --top-m 5 \
-    --pool-size 320 \
+    --pool-size 400 \
     --warmup-epochs 80 \
     --epochs 800 \
-    --lambda-rank 0.1 \
-    --exploration-ratio 0.2 \
+    --lambda-rank 0.2 \
+    --exploration-ratio 0.5 \
     --probe-support 16 \
     --probe-query 16 \
-    --probe-steps 3 \
-    --probe-lr 1e-2 \
-    --device cuda:0 \
+    --probe-steps 8 \
+    --probe-lr 5e-3 \
+    --device cuda:1 \
     --use-class-weights
 
 

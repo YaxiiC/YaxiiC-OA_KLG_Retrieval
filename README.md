@@ -66,6 +66,32 @@ Total Loss = L_cls + λ_rank × L_rank
 4. Training: `train_joint_scoring_kl.py`
 5. Inference: `infer_budgeted_retrieval.py`
 
+### Data Format (Radiomics Wide CSV)
+
+Each row is one case. Required columns:
+- `case_id`: unique identifier (must match image filename stem)
+- `KLGrade`: integer 0..4 (only required for training)
+- feature columns: numeric radiomics values
+
+Notes:
+- Wide format is required for subset retrieval.
+- Missing values are supported; they are filled during preprocessing.
+- `case_id` should align with `imagesTr/imagesTs` filenames (without extension).
+
+### Image Folder Convention
+
+- 3D images should be in `imagesTr/` or `imagesTs/` with nnU-Net style naming.
+- Only the filename stem is used for matching to `case_id`.
+- Input shape is `[B,1,D,H,W]` after preprocessing.
+
+### Key Scripts (What They Do)
+
+- `train_joint_scoring_kl.py`: trains the scorer + classifier jointly with probe-based rewards.
+- `infer_budgeted_retrieval.py`: performs budgeted retrieval and outputs predictions + selected subsets.
+- `train_selector_klgrade.py`: legacy gate-based baseline.
+- `torchradiomics_from_ROIs.py`: extracts radiomics from ROIs into CSV.
+- `nnunet_segmentation_inference.py`: generates ROI masks for radiomics.
+
 ### File Structure
 
 ```
@@ -220,6 +246,32 @@ Total Loss = L_cls + λ_rank × L_rank
 3. 推荐 wide 格式（每行一个 case）
 4. 训练：`train_joint_scoring_kl.py`
 5. 推理：`infer_budgeted_retrieval.py`
+
+### 数据格式（Radiomics 宽表 CSV）
+
+每行一个 case，必须包含：
+- `case_id`：病例唯一 ID（需与影像文件名 stem 对齐）
+- `KLGrade`：0..4（仅训练需要）
+- 特征列：数值型 radiomics 特征
+
+说明：
+- 子集检索必须使用 wide 格式。
+- 支持缺失值，预处理阶段会填补。
+- `case_id` 需要与 `imagesTr/imagesTs` 文件名一致（不含扩展名）。
+
+### 影像文件约定
+
+- 3D 影像放在 `imagesTr/` 或 `imagesTs/`，遵循 nnU-Net 命名规则。
+- 仅使用文件名 stem 与 `case_id` 匹配。
+- 预处理后输入形状为 `[B,1,D,H,W]`。
+
+### 关键脚本说明
+
+- `train_joint_scoring_kl.py`：scorer + classifier 联合训练（含 probe 奖励）。
+- `infer_budgeted_retrieval.py`：预算检索推理，输出预测与选中子集。
+- `train_selector_klgrade.py`：旧版 gate-based baseline。
+- `torchradiomics_from_ROIs.py`：从 ROI 提取 radiomics CSV。
+- `nnunet_segmentation_inference.py`：生成 ROI 分割掩膜。
 
 ### 文件结构
 
