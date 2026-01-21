@@ -5,8 +5,8 @@ python train_joint_scoring_kl.py \
     --images-tr "/home/yaxi/nnUNet/nnUNet_raw/Dataset360_oaizib/imagesTr" \
     --radiomics-train-csv "/home/yaxi/YaxiiC-OA_KLG_Retrieval/output_train/radiomics_results_wide.csv" \
     --klgrade-train-csv "/home/yaxi/YaxiiC-OA_KLG_Retrieval/subInfo_train.xlsx" \
-    --outdir "training_logs_joint_scoring_k30" \
-    --k 30 \
+    --outdir "training_logs_joint_scoring_k16b" \
+    --k 15 \
     --n-subsets 50 \
     --top-m 5 \
     --pool-size 400 \
@@ -18,7 +18,7 @@ python train_joint_scoring_kl.py \
     --probe-query 16 \
     --probe-steps 8 \
     --probe-lr 5e-3 \
-    --device cuda:1 \
+    --device cuda:0 \
     --use-class-weights \
     --label-mode binary_oa
 
