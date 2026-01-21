@@ -344,19 +344,14 @@ class SubsetScorer(nn.Module):
 
 
 class TokenSetKLClassifier(nn.Module):
-    """Predict KLGrade from token-set embedding only."""
+    """Predict KLGrade from token-set embedding only (logistic regression)."""
 
     def __init__(self, emb_dim: int = 256, num_classes: int = 5):
         super().__init__()
-        self.mlp = nn.Sequential(
-            nn.Linear(emb_dim, emb_dim),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.2),
-            nn.Linear(emb_dim, num_classes)
-        )
+        self.classifier = nn.Linear(emb_dim, num_classes)
 
     def forward(self, z_set: torch.Tensor) -> torch.Tensor:
-        return self.mlp(z_set)
+        return self.classifier(z_set)
 
 
 class JointScoringModel(nn.Module):

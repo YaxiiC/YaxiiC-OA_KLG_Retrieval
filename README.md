@@ -32,6 +32,7 @@ Legacy gate-based selection remains in `train_selector_klgrade.py`.
 
 #### 4) Token-Set KL Classifier (`models.py`)
 - Input: `z_set` (subset embedding only)
+- Logistic regression (single linear layer)
 - Output: logits `[B,num_classes]`
 
 ### Training Loss
@@ -215,6 +216,7 @@ python infer_budgeted_retrieval.py `
 
 #### 4) KL 分类器
 - 输入 `z_set`（仅子集嵌入）
+- 逻辑回归（单层线性分类器）
 - 输出 logits `[B,num_classes]`
 
 ### 损失
