@@ -344,20 +344,19 @@ class SubsetScorer(nn.Module):
 
 
 class TokenSetKLClassifier(nn.Module):
-    """Predict KLGrade from image + token-set embedding."""
+    """Predict KLGrade from token-set embedding only."""
 
     def __init__(self, emb_dim: int = 256, num_classes: int = 5):
         super().__init__()
         self.mlp = nn.Sequential(
-            nn.Linear(emb_dim * 2, emb_dim),
+            nn.Linear(emb_dim, emb_dim),
             nn.ReLU(inplace=True),
             nn.Dropout(0.2),
             nn.Linear(emb_dim, num_classes)
         )
 
-    def forward(self, z_img: torch.Tensor, z_set: torch.Tensor) -> torch.Tensor:
-        x = torch.cat([z_img, z_set], dim=-1)
-        return self.mlp(x)
+    def forward(self, z_set: torch.Tensor) -> torch.Tensor:
+        return self.mlp(z_set)
 
 
 class JointScoringModel(nn.Module):
@@ -424,6 +423,5 @@ class JointScoringModel(nn.Module):
         type_ids: torch.Tensor,
         values: torch.Tensor
     ) -> torch.Tensor:
-        z_img = self.encode_image(image)
         z_set = self.encode_set(feature_ids, roi_ids, type_ids, values)
-        return self.classifier(z_img, z_set)
+        return self.classifier(z_set)

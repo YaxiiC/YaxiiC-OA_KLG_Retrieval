@@ -31,8 +31,8 @@ Legacy gate-based selection remains in `train_selector_klgrade.py`.
 - Output: `score ∈ R` (higher is better)
 
 #### 4) Token-Set KL Classifier (`models.py`)
-- Input: `[z_img, z_set]`
-- Output: logits `[B,5]`
+- Input: `z_set` (subset embedding only)
+- Output: logits `[B,num_classes]`
 
 ### Training Loss
 
@@ -159,6 +159,7 @@ python infer_budgeted_retrieval.py `
 - `--lambda-rank`: weight for scorer ranking loss
 - `--exploration-ratio`: fraction of random subsets after warmup
 - `--probe-support`, `--probe-query`, `--probe-steps`, `--probe-lr`
+- `--label-mode`: `multiclass` (KL 0-4) or `binary_oa` (0/1→non-OA, 2/3/4→OA)
 
 ### Output Files
 
@@ -213,8 +214,8 @@ python infer_budgeted_retrieval.py `
 - 输出 `score ∈ R`
 
 #### 4) KL 分类器
-- 输入 `[z_img, z_set]`
-- 输出 logits `[B,5]`
+- 输入 `z_set`（仅子集嵌入）
+- 输出 logits `[B,num_classes]`
 
 ### 损失
 
@@ -318,6 +319,7 @@ python infer_budgeted_retrieval.py `
 - `--k`, `--n-subsets`, `--top-m`, `--pool-size`
 - `--warmup-epochs`, `--lambda-rank`, `--exploration-ratio`
 - `--probe-support`, `--probe-query`, `--probe-steps`, `--probe-lr`
+- `--label-mode`：`multiclass`（KL 0-4）或 `binary_oa`（0/1→非OA，2/3/4→OA）
 
 ### 输出
 
