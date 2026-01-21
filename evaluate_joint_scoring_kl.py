@@ -67,6 +67,9 @@ def main():
     parser.add_argument("--top-m", type=int, default=None, help="TopM subsets for ensemble")
     parser.add_argument("--k", type=int, default=None, help="Subset size K")
     parser.add_argument("--seed", type=int, default=12345)
+    parser.add_argument("--label-mode", type=str, default=None,
+                        choices=["multiclass", "binary_oa"],
+                        help="Override label mode (default: from checkpoint)")
 
     args = parser.parse_args()
 
@@ -99,6 +102,23 @@ def main():
     pool_size = args.pool_size if args.pool_size is not None else ckpt_args.get("pool_size", 320)
     top_m = args.top_m if args.top_m is not None else ckpt_args.get("top_m", 4)
 
+    def infer_num_classes(state_dict: Dict[str, torch.Tensor]) -> int:
+        for key in state_dict:
+            if key.endswith("classifier.mlp.3.weight"):
+                return state_dict[key].shape[0]
+        for key in state_dict:
+            if key.endswith("classifier.mlp.2.weight") or key.endswith("classifier.mlp.1.weight"):
+                return state_dict[key].shape[0]
+        raise KeyError("Could not infer num_classes from checkpoint state_dict.")
+
+    num_classes = checkpoint.get("num_classes")
+    if num_classes is None:
+        num_classes = infer_num_classes(checkpoint["model_state_dict"])
+    label_mode = args.label_mode or ckpt_args.get("label_mode")
+    if label_mode is None:
+        label_mode = "binary_oa" if num_classes == 2 else "multiclass"
+    logger.info(f"Label mode: {label_mode} | num_classes={num_classes}")
+
     # Load radiomics (wide format)
     radiomics, feature_names, _, feature_meta = load_radiomics_wide_format(
         Path(args.radiomics_csv)
@@ -122,7 +142,11 @@ def main():
 
     labels_dict = None
     if args.klgrade_csv:
-        labels_dict = load_klgrade_labels(Path(args.klgrade_csv))
+        labels_dict_raw = load_klgrade_labels(Path(args.klgrade_csv))
+        if label_mode == "binary_oa":
+            labels_dict = {cid: (0 if lab <= 1 else 1) for cid, lab in labels_dict_raw.items()}
+        else:
+            labels_dict = labels_dict_raw
         logger.info(f"Loaded {len(labels_dict)} labels")
 
     case_ids = list(radiomics.keys())
@@ -156,7 +180,8 @@ def main():
     model = JointScoringModel(
         num_features=num_features,
         num_rois=num_rois,
-        num_types=num_types
+        num_types=num_types,
+        num_classes=num_classes
     ).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()

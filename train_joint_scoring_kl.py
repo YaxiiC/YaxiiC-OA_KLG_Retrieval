@@ -19,7 +19,8 @@ python train_joint_scoring_kl.py \
     --probe-steps 8 \
     --probe-lr 5e-3 \
     --device cuda:1 \
-    --use-class-weights
+    --use-class-weights \
+    --label-mode binary_oa
 
 
 """
@@ -92,6 +93,9 @@ def main():
     parser.add_argument("--use-class-weights", action="store_true")
     parser.add_argument("--class-weight-method", type=str, default="balanced",
                         choices=["balanced", "balanced_subsample"])
+    parser.add_argument("--label-mode", type=str, default="multiclass",
+                        choices=["multiclass", "binary_oa"],
+                        help="Label mode: 5-class KL (multiclass) or binary OA")
 
     # Probe hyperparameters
     parser.add_argument("--probe-support", type=int, default=16)
@@ -124,7 +128,13 @@ def main():
     radiomics_train, feature_names, _, feature_meta = load_radiomics_wide_format(
         Path(args.radiomics_train_csv)
     )
-    labels_train = load_klgrade_labels(Path(args.klgrade_train_csv))
+    labels_train_raw = load_klgrade_labels(Path(args.klgrade_train_csv))
+    if args.label_mode == "binary_oa":
+        labels_train = {cid: (0 if lab <= 1 else 1) for cid, lab in labels_train_raw.items()}
+    else:
+        labels_train = labels_train_raw
+    num_classes = 2 if args.label_mode == "binary_oa" else 5
+    logger.info(f"Label mode: {args.label_mode} | num_classes={num_classes}")
 
     train_case_ids = list(set(radiomics_train.keys()) & set(labels_train.keys()))
     logger.info(f"Cases with both radiomics and labels: {len(train_case_ids)}")
@@ -189,7 +199,8 @@ def main():
     model = JointScoringModel(
         num_features=num_features,
         num_rois=num_rois,
-        num_types=num_types
+        num_types=num_types,
+        num_classes=num_classes
     ).to(device)
     logger.info(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
@@ -198,7 +209,7 @@ def main():
     class_weights = None
     if args.use_class_weights:
         train_labels_array = np.array([labels_train[cid] for cid in train_ids])
-        classes = np.array([0, 1, 2, 3, 4])
+        classes = np.array([0, 1] if num_classes == 2 else [0, 1, 2, 3, 4])
         weights = compute_class_weight(
             class_weight=args.class_weight_method,
             classes=classes,
@@ -230,6 +241,7 @@ def main():
             n_subsets=args.n_subsets,
             top_m=args.top_m,
             pool_size=args.pool_size,
+            num_classes=num_classes,
             lambda_rank=args.lambda_rank,
             exploration_ratio=args.exploration_ratio,
             probe_support=args.probe_support,
@@ -303,7 +315,8 @@ def main():
             "optimizer_state_dict": optimizer.state_dict(),
             "val_qwk": val_metrics["qwk"],
             "args": vars(args),
-            "num_features": num_features
+            "num_features": num_features,
+            "num_classes": num_classes
         }
         torch.save(checkpoint, outdir / "checkpoints" / "last.pth")
         if is_best:
