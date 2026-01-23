@@ -5,19 +5,21 @@ python train_joint_scoring_kl.py \
     --images-tr "/home/yaxi/nnUNet/nnUNet_raw/Dataset360_oaizib/imagesTr" \
     --radiomics-train-csv "/home/yaxi/YaxiiC-OA_KLG_Retrieval/output_train/radiomics_results_wide.csv" \
     --klgrade-train-csv "/home/yaxi/YaxiiC-OA_KLG_Retrieval/subInfo_train.xlsx" \
-    --outdir "training_logs_joint_scoring_k16b" \
-    --k 15 \
+    --outdir "training_logs_joint_scoring_k25" \
+    --k 25 \
     --n-subsets 50 \
     --top-m 5 \
-    --pool-size 400 \
+    --pool-size 1000 \
     --warmup-epochs 80 \
     --epochs 800 \
-    --lambda-rank 0.2 \
-    --exploration-ratio 0.5 \
+    --lambda-rank 0.5 \
+    --exploration-ratio 0.6 \
     --probe-support 16 \
     --probe-query 16 \
     --probe-steps 8 \
     --probe-lr 5e-3 \
+    --emb-dim 128 \
+    --weight-decay 1e-3 \
     --device cuda:0 \
     --use-class-weights \
     --label-mode binary_oa
@@ -85,7 +87,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--weight-decay", type=float, default=1e-5)
+    parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--val-ratio", type=float, default=0.2)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
@@ -96,6 +98,8 @@ def main():
     parser.add_argument("--label-mode", type=str, default="multiclass",
                         choices=["multiclass", "binary_oa"],
                         help="Label mode: 5-class KL (multiclass) or binary OA")
+    parser.add_argument("--emb-dim", type=int, default=256,
+                        help="Embedding dim for image/token encoders and scorer/classifier")
 
     # Probe hyperparameters
     parser.add_argument("--probe-support", type=int, default=16)
@@ -200,6 +204,7 @@ def main():
         num_features=num_features,
         num_rois=num_rois,
         num_types=num_types,
+        emb_dim=args.emb_dim,
         num_classes=num_classes
     ).to(device)
     logger.info(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
@@ -218,7 +223,7 @@ def main():
         class_weights = torch.FloatTensor(weights).to(device)
         logger.info(f"Using class weights: {weights}")
 
-    best_qwk = -1.0
+    best_macro_f1 = -1.0
     best_epoch = 0
     history = []
 
@@ -264,9 +269,9 @@ def main():
         )
 
         epoch_time = time.time() - start
-        is_best = val_metrics["qwk"] > best_qwk
+        is_best = val_metrics["macro_f1"] > best_macro_f1
         if is_best:
-            best_qwk = val_metrics["qwk"]
+            best_macro_f1 = val_metrics["macro_f1"]
             best_epoch = epoch
 
         logger.info(
@@ -314,6 +319,7 @@ def main():
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "val_qwk": val_metrics["qwk"],
+            "val_macro_f1": val_metrics["macro_f1"],
             "args": vars(args),
             "num_features": num_features,
             "num_classes": num_classes
@@ -321,9 +327,9 @@ def main():
         torch.save(checkpoint, outdir / "checkpoints" / "last.pth")
         if is_best:
             torch.save(checkpoint, outdir / "checkpoints" / "best.pth")
-            logger.info(f"  → Best checkpoint saved (Val QWK: {best_qwk:.4f})")
+            logger.info(f"  → Best checkpoint saved (Val Macro-F1: {best_macro_f1:.4f})")
 
-    logger.info(f"Training complete. Best epoch: {best_epoch}, best QWK: {best_qwk:.4f}")
+    logger.info(f"Training complete. Best epoch: {best_epoch}, best Macro-F1: {best_macro_f1:.4f}")
 
 
 if __name__ == "__main__":

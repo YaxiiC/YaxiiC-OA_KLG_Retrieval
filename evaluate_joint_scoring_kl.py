@@ -13,6 +13,23 @@ python evaluate_joint_scoring_kl.py ^
   --radiomics-csv "C:\Users\chris\MICCAI2026\YaxiiC-OA_KLG_Retrieval\output_test\radiomics_results_wide.csv" ^
   --klgrade-csv "C:\Users\chris\MICCAI2026\YaxiiC-OA_KLG_Retrieval\subInfo_test.xlsx" ^
   --device cuda:0
+
+python evaluate_joint_scoring_kl.py \
+    --model-dir training_logs_joint_scoring_k15 \
+    --images-dir "home/yaxi/nnUNet/nnUNet_raw/Dataset360_oaizib/imagesTs" \
+    --radiomics-csv "home/yaxi/YaxiiC-OA_KLG_Retrieval/output_test/radiomics_results_wide.csv" \
+    --klgrade-csv "home/yaxi/YaxiiC-OA_KLG_Retrieval/subInfo_test.xlsx" \
+    --device cuda:0
+
+python evaluate_joint_scoring_kl.py \
+  --model-dir training_logs_joint_scoring_k30 \
+  --images-dir "/home/yaxi/nnUNet/nnUNet_raw/Dataset360_oaizib/imagesTs" \
+  --radiomics-csv "/home/yaxi/YaxiiC-OA_KLG_Retrieval/output_test/radiomics_results_wide.csv" \
+  --klgrade-csv "/home/yaxi/YaxiiC-OA_KLG_Retrieval/subInfo_test.xlsx" \
+  --retrieval budgeted \
+  --recall 4000 --keep 50 --seeds 5 --mut-per-seed 200 --final-top 10 \
+  --device cuda:1\
+  --label-mode binary_oa
 """
 
 import argparse
@@ -48,6 +65,20 @@ def load_feature_names(feature_names_path: Path) -> Optional[List[str]]:
     return [mapping[str(i)] for i in sorted(map(int, mapping.keys()))]
 
 
+def mutate_subset(subset: np.ndarray, num_features: int, rng: random.Random) -> np.ndarray:
+    """
+    1-swap or 2-swap mutation on subset indices (used in budgeted retrieval).
+    """
+    subset = subset.copy()
+    k = len(subset)
+    swap_count = 1 if rng.random() < 0.7 else 2
+    for _ in range(swap_count):
+        pos = rng.randrange(k)
+        new_idx = rng.randrange(num_features)
+        subset[pos] = new_idx
+    return subset
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Evaluate JointScoringModel on images + radiomics",
@@ -67,6 +98,14 @@ def main():
     parser.add_argument("--top-m", type=int, default=None, help="TopM subsets for ensemble")
     parser.add_argument("--k", type=int, default=None, help="Subset size K")
     parser.add_argument("--seed", type=int, default=12345)
+    parser.add_argument("--retrieval", type=str, default="random",
+                        choices=["random", "budgeted"],
+                        help="Subset retrieval strategy for evaluation")
+    parser.add_argument("--recall", type=int, default=4000, help="Budgeted recall size")
+    parser.add_argument("--keep", type=int, default=50, help="Budgeted keep after recall")
+    parser.add_argument("--seeds", type=int, default=5, help="Budgeted local search seeds")
+    parser.add_argument("--mut-per-seed", type=int, default=200, help="Budgeted mutations per seed")
+    parser.add_argument("--final-top", type=int, default=10, help="Final top subsets for ensemble")
     parser.add_argument("--label-mode", type=str, default=None,
                         choices=["multiclass", "binary_oa"],
                         help="Override label mode (default: from checkpoint)")
@@ -103,6 +142,9 @@ def main():
     top_m = args.top_m if args.top_m is not None else ckpt_args.get("top_m", 4)
 
     def infer_num_classes(state_dict: Dict[str, torch.Tensor]) -> int:
+        for key in state_dict:
+            if key.endswith("classifier.classifier.weight"):
+                return state_dict[key].shape[0]
         for key in state_dict:
             if key.endswith("classifier.mlp.3.weight"):
                 return state_dict[key].shape[0]
@@ -202,20 +244,63 @@ def main():
                 image = images[i:i + 1]
                 radiomics_vec = radiomics[case_id]
 
-                candidate_subsets = sample_random_subsets(num_features, k, pool_size, rng)
-                subset_scores = []
-                for subset in candidate_subsets:
-                    f_ids, r_ids, t_ids, vals = build_subset_tensors(
-                        radiomics_vec, subset, feature_to_roi, feature_to_type, device
-                    )
-                    score = model.score_subset(
-                        image, f_ids.unsqueeze(0), r_ids.unsqueeze(0), t_ids.unsqueeze(0), vals.unsqueeze(0)
-                    )
-                    subset_scores.append(score.item())
+                if args.retrieval == "budgeted":
+                    # Recall
+                    recall_subsets = sample_random_subsets(num_features, k, args.recall, rng)
+                    recall_scores = []
+                    for subset in recall_subsets:
+                        f_ids, r_ids, t_ids, vals = build_subset_tensors(
+                            radiomics_vec, subset, feature_to_roi, feature_to_type, device
+                        )
+                        score = model.score_subset(
+                            image, f_ids.unsqueeze(0), r_ids.unsqueeze(0), t_ids.unsqueeze(0), vals.unsqueeze(0)
+                        )
+                        recall_scores.append(score.item())
+                    recall_scores = np.array(recall_scores)
+                    keep_indices = np.argsort(recall_scores)[-args.keep:]
+                    keep_subsets = recall_subsets[keep_indices]
 
-                subset_scores = np.array(subset_scores)
-                topm_indices = np.argsort(subset_scores)[-top_m:]
-                topm_subsets = candidate_subsets[topm_indices]
+                    # Local search (mutations)
+                    seed_indices = np.argsort(recall_scores[keep_indices])[-args.seeds:]
+                    seed_subsets = keep_subsets[seed_indices]
+                    mutated_subsets = []
+                    for seed in seed_subsets:
+                        for _ in range(args.mut_per_seed):
+                            mutated_subsets.append(mutate_subset(seed, num_features, rng))
+                    if mutated_subsets:
+                        mutated_subsets = np.array(mutated_subsets, dtype=np.int64)
+                        keep_subsets = np.concatenate([keep_subsets, mutated_subsets], axis=0)
+
+                    # Final ranking
+                    final_scores = []
+                    for subset in keep_subsets:
+                        f_ids, r_ids, t_ids, vals = build_subset_tensors(
+                            radiomics_vec, subset, feature_to_roi, feature_to_type, device
+                        )
+                        score = model.score_subset(
+                            image, f_ids.unsqueeze(0), r_ids.unsqueeze(0), t_ids.unsqueeze(0), vals.unsqueeze(0)
+                        )
+                        final_scores.append(score.item())
+                    final_scores = np.array(final_scores)
+                    final_indices = np.argsort(final_scores)[-args.final_top:]
+                    topm_subsets = keep_subsets[final_indices]
+                    topm_scores = final_scores[final_indices]
+                else:
+                    candidate_subsets = sample_random_subsets(num_features, k, pool_size, rng)
+                    subset_scores = []
+                    for subset in candidate_subsets:
+                        f_ids, r_ids, t_ids, vals = build_subset_tensors(
+                            radiomics_vec, subset, feature_to_roi, feature_to_type, device
+                        )
+                        score = model.score_subset(
+                            image, f_ids.unsqueeze(0), r_ids.unsqueeze(0), t_ids.unsqueeze(0), vals.unsqueeze(0)
+                        )
+                        subset_scores.append(score.item())
+
+                    subset_scores = np.array(subset_scores)
+                    topm_indices = np.argsort(subset_scores)[-top_m:]
+                    topm_subsets = candidate_subsets[topm_indices]
+                    topm_scores = subset_scores[topm_indices]
 
                 logits_list = []
                 for subset in topm_subsets:
@@ -244,12 +329,20 @@ def main():
                         for subset in topm_subsets
                     ]
 
-                selected_subsets.append({
-                    "case_id": case_id,
-                    "topm_indices": topm_subsets.tolist(),
-                    "topm_scores": subset_scores[topm_indices].tolist(),
-                    "topm_names": subset_names
-                })
+                if args.retrieval == "budgeted":
+                    selected_subsets.append({
+                        "case_id": case_id,
+                        "final_top_indices": topm_subsets.tolist(),
+                        "final_top_scores": topm_scores.tolist(),
+                        "final_top_names": subset_names
+                    })
+                else:
+                    selected_subsets.append({
+                        "case_id": case_id,
+                        "topm_indices": topm_subsets.tolist(),
+                        "topm_scores": topm_scores.tolist(),
+                        "topm_names": subset_names
+                    })
 
                 if labels_dict:
                     all_labels.append(int(batch["label"][i].item()))
